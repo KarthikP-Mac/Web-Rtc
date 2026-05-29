@@ -125,10 +125,10 @@ function MeetingPage() {
         }
       };
 
-      // If socket hasn't opened within 2 seconds, trigger fallback
+      // If socket hasn't opened within 5 seconds, trigger fallback (giving Render instances more time to establish connection)
       connectionTimeout = setTimeout(() => {
         if (!wasOpened) triggerFallback();
-      }, 2000);
+      }, 5000);
 
       ws.addEventListener("open", () => {
         wasOpened = true; // Mark as successfully opened
@@ -220,6 +220,10 @@ function MeetingPage() {
 
   function startCall() {
     if (rtcService.current) {
+      if (connectionState === "connecting" || connectionState === "connected") {
+        console.warn("Call connection already in progress or connected. Ignoring manual connect request.");
+        return;
+      }
       console.log("Manually initiating WebRTC call offer...");
       setConnectionState("connecting");
       rtcService.current.createOffer();
@@ -243,7 +247,30 @@ function MeetingPage() {
   }
 
   function endCall() {
-    rtcService.current?.stop();
+    // 1. Stop all media tracks immediately so the OS releases the camera/mic hardware.
+    //    We do this BEFORE navigate() because navigate() will unmount the component,
+    //    which can cause the video element refs to become null/stale before stop()
+    //    gets to null their srcObject — leaving the browser indicator active.
+    const svc = rtcService.current;
+    if (svc) {
+      // Directly stop every track on the live stream
+      if (svc.localStream) {
+        svc.localStream.getTracks().forEach((t) => t.stop());
+        svc.localStream = null;
+      }
+      // Detach the stream from both video elements right now, while refs are still valid
+      if (localVideo.current) {
+        localVideo.current.srcObject = null;
+      }
+      if (remoteVideo.current) {
+        remoteVideo.current.srcObject = null;
+      }
+      // Full teardown of peer + socket
+      svc.stop();
+      rtcService.current = null;
+    }
+
+    // 2. Navigate away after hardware has been released
     navigate("/");
   }
 
