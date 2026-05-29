@@ -57,6 +57,15 @@ public class SignalingHandler extends TextWebSocketHandler {
                 return;
             }
 
+            if (signal.getType().equals("ping")) {
+                SignalMessage pongMsg = new SignalMessage();
+                pongMsg.setType("pong");
+                pongMsg.setRoomId(roomId);
+                pongMsg.setSender("server");
+                session.sendMessage(new TextMessage(mapper.writeValueAsString(pongMsg)));
+                return;
+            }
+
             System.out.println("Processing message type '" + signal.getType() + "' from session " + session.getId() + " in room " + roomId);
             int forwardedCount = 0;
             for (WebSocketSession s : rooms.get(roomId)) {

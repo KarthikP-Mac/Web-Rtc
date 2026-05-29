@@ -18,6 +18,7 @@ export class WebRTCService {
     this.remoteDescriptionSet = false;
     this.boundHandleMessage = null;
     this.onOpenHandler = null;
+    this.pingInterval = null;
   }
 
   async init() {
@@ -90,6 +91,14 @@ export class WebRTCService {
       this.send("join", {});
       this.sendUsername(true);
       this.flushQueue();
+
+      // Start client-side heartbeat to keep Render proxy connection active
+      if (this.pingInterval) clearInterval(this.pingInterval);
+      this.pingInterval = setInterval(() => {
+        if (this.socket.readyState === WebSocket.OPEN) {
+          this.send("ping", {});
+        }
+      }, 15000);
     };
 
     if (this.socket.readyState === WebSocket.OPEN) {
@@ -117,6 +126,22 @@ export class WebRTCService {
         { urls: "stun:stun2.l.google.com:19302" },
         { urls: "stun:stun3.l.google.com:19302" },
         { urls: "stun:stun4.l.google.com:19302" },
+        // Open Relay Project TURN Fallback (for symmetric NATs & mobile networks on Render)
+        {
+          urls: "turn:openrelay.metered.ca:80",
+          username: "openrelayproject",
+          credential: "openrelayproject"
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443",
+          username: "openrelayproject",
+          credential: "openrelayproject"
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443?transport=tcp",
+          username: "openrelayproject",
+          credential: "openrelayproject"
+        }
       ],
     });
 
@@ -341,6 +366,11 @@ export class WebRTCService {
   }
 
   stop() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+
     this.localStream?.getTracks().forEach((t) => t.stop());
     
     if (this.peer) {
@@ -362,5 +392,93 @@ export class WebRTCService {
 
     this.remoteIceCandidatesQueue = [];
     this.remoteDescriptionSet = false;
+  }
+
+  async switchCamera(currentFacingMode) {
+    if (!this.localStream) return currentFacingMode;
+
+    const newFacingMode = currentFacingMode === "user" ? "environment" : "user";
+    
+    const videoTracks = this.localStream.getVideoTracks();
+    videoTracks.forEach((track) => track.stop());
+
+    const constraints = {
+      video: { facingMode: { exact: newFacingMode } },
+      audio: false,
+    };
+
+    try {
+      console.log(`Attempting to switch camera to: ${newFacingMode}`);
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const newVideoTrack = newStream.getVideoTracks()[0];
+
+      videoTracks.forEach((track) => this.localStream.removeTrack(track));
+      this.localStream.addTrack(newVideoTrack);
+
+      if (this.peer) {
+        const senders = this.peer.getSenders();
+        const videoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === "video"
+        );
+        if (videoSender) {
+          console.log("Replacing video track on existing peer connection...");
+          await videoSender.replaceTrack(newVideoTrack);
+        }
+      }
+
+      if (this.localVideoRef?.current) {
+        this.localVideoRef.current.srcObject = this.localStream;
+      }
+
+      return newFacingMode;
+    } catch (error) {
+      console.warn(`Failed exact constraints for facingMode: ${newFacingMode}. Retrying with loose constraints...`, error);
+      
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: newFacingMode },
+          audio: false,
+        });
+        const fallbackVideoTrack = fallbackStream.getVideoTracks()[0];
+
+        videoTracks.forEach((track) => this.localStream.removeTrack(track));
+        this.localStream.addTrack(fallbackVideoTrack);
+
+        if (this.peer) {
+          const senders = this.peer.getSenders();
+          const videoSender = senders.find(
+            (sender) => sender.track && sender.track.kind === "video"
+          );
+          if (videoSender) {
+            await videoSender.replaceTrack(fallbackVideoTrack);
+          }
+        }
+
+        if (this.localVideoRef?.current) {
+          this.localVideoRef.current.srcObject = this.localStream;
+        }
+
+        return newFacingMode;
+      } catch (err) {
+        console.error("Camera switch completely failed:", err);
+
+        try {
+          const recoveryStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: currentFacingMode },
+            audio: false,
+          });
+          const recoveryTrack = recoveryStream.getVideoTracks()[0];
+          this.localStream.addTrack(recoveryTrack);
+          
+          if (this.localVideoRef?.current) {
+            this.localVideoRef.current.srcObject = this.localStream;
+          }
+        } catch (recoveryErr) {
+          console.error("Failed to recover original camera track:", recoveryErr);
+        }
+        
+        throw err;
+      }
+    }
   }
 }

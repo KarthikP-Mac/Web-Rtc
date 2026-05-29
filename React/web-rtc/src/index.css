@@ -220,6 +220,36 @@ button {
   gap: 16px;
 }
 
+/* Bluetooth Control Button Symbol Style */
+.control-btn.bluetooth-control-btn.active {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  color: #60a5fa !important;
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.3) !important;
+  cursor: default;
+  animation: pulseGlowingBlue 2.5s infinite;
+}
+
+.control-btn.switch-camera-btn svg {
+  transition: transform 0.4s ease;
+}
+
+.control-btn.switch-camera-btn:hover:not(:disabled) svg {
+  transform: rotate(180deg);
+}
+
+@keyframes pulseGlowingBlue {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
 /* Status Badges */
 .status-badge {
   display: flex;
@@ -906,6 +936,11 @@ button {
     height: 80px;
   }
 
+  .controls-group {
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+
   .control-btn {
     width: 46px;
     height: 46px;
@@ -913,6 +948,20 @@ button {
 
   .control-btn.call-trigger {
     padding: 0 16px;
+  }
+
+  /* Compact connected badge on smaller devices */
+  @media (max-width: 576px) {
+    .connection-active-indicator {
+      padding: 0;
+      width: 46px;
+      height: 46px;
+      justify-content: center;
+      border-radius: 50%;
+    }
+    .connection-active-indicator span:last-child {
+      display: none;
+    }
   }
 }
 
@@ -958,6 +1007,11 @@ button {
     padding-bottom: 65px;
   }
 
+  .controls-group {
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
   .control-btn {
     width: 44px;
     height: 44px;
@@ -965,6 +1019,18 @@ button {
 
   .control-btn.call-trigger {
     padding: 0 14px;
+  }
+
+  .connection-active-indicator {
+    padding: 0;
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+    border-radius: 50%;
+  }
+
+  .connection-active-indicator span:last-child {
+    display: none;
   }
 
   .btn-secondary span {
@@ -1073,7 +1139,8 @@ button {
   }
 
   .controls-group {
-    gap: 12px;
+    gap: 6px;
+    flex-wrap: nowrap;
   }
 
   .control-btn {
@@ -1083,6 +1150,18 @@ button {
 
   .control-btn.call-trigger {
     padding: 0 12px;
+  }
+
+  .connection-active-indicator {
+    padding: 0;
+    width: 42px;
+    height: 42px;
+    justify-content: center;
+    border-radius: 50%;
+  }
+
+  .connection-active-indicator span:last-child {
+    display: none;
   }
 
   .btn-text {

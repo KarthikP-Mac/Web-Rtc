@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { WebRTCService } from "../services/webrtc";
+import VideoPlayer from "../components/VideoPlayer";
+import Controls from "../components/Controls";
 
 function MeetingPage() {
   const rawRoomId = useParams().roomId || "";
@@ -28,6 +30,8 @@ function MeetingPage() {
   const [connectionState, setConnectionState] = useState("new");
   const [copied, setCopied] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [isBluetoothConnected, setIsBluetoothConnected] = useState(false);
+  const [facingMode, setFacingMode] = useState("user");
   const initialized = useRef(false);
   const connectionId = useRef(0);
 
@@ -37,12 +41,23 @@ function MeetingPage() {
       initMeeting(username);
     }
 
+    checkBluetoothDevices();
+
+    const handleDeviceChange = () => {
+      checkBluetoothDevices();
+    };
+
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+    }
+
     return () => {
-      // Invalidate any active connection attempts
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       connectionId.current++;
 
-      // Close active socket
+      if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
+        navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+      }
+
       if (socket.current) {
         socket.current.onclose = null;
         socket.current.onerror = null;
@@ -172,6 +187,7 @@ function MeetingPage() {
         });
         setCameraEnabled(status.video);
         setMicEnabled(status.audio);
+        checkBluetoothDevices();
       }).catch((e) => {
         if (currentId !== connectionId.current) return;
         console.error("WebRTC Init failed:", e);
@@ -231,6 +247,38 @@ function MeetingPage() {
     navigate("/");
   }
 
+  async function checkBluetoothDevices() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        return;
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      // Strict matching to prevent false positives on motherboard/virtual wireless controllers
+      const bluetoothKeywords = ["bluetooth", "airpods", "buds", "sony wh-", "sony wf-", "freebuds", "beatspill", "powerbeats", "earset", "hfp", "a2dp"];
+      const hasBluetooth = devices.some(device => {
+        if (device.kind === "audioinput" || device.kind === "audiooutput") {
+          const label = device.label.toLowerCase();
+          return bluetoothKeywords.some(keyword => label.includes(keyword));
+        }
+        return false;
+      });
+      setIsBluetoothConnected(hasBluetooth);
+    } catch (error) {
+      console.warn("Error scanning Bluetooth devices:", error);
+    }
+  }
+
+  async function handleSwitchCamera() {
+    if (rtcService.current && deviceInfo.hasCamera && cameraEnabled) {
+      try {
+        const nextMode = await rtcService.current.switchCamera(facingMode);
+        setFacingMode(nextMode);
+      } catch (err) {
+        console.error("Error switching camera:", err);
+      }
+    }
+  }
+
   function copyLink() {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
@@ -244,49 +292,6 @@ function MeetingPage() {
   }
 
   // Icons Helpers
-  const MicIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon">
-      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-      <line x1="12" x2="12" y1="19" y2="22" />
-    </svg>
-  );
-
-  const MicOffIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon">
-      <line x1="2" x2="22" y1="2" y2="22" />
-      <path d="M18.89 13.23A7.12 7.12 0 0 0 19 11v-1" />
-      <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
-      <path d="M15 9.34V5a3 3 0 0 0-5.94-.6" />
-      <path d="M5 10v1a7 7 0 0 0 8 6.92" />
-      <line x1="12" x2="12" y1="19" y2="22" />
-    </svg>
-  );
-
-  const CameraIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon">
-      <path d="m22 8-6 4 6 4V8Z" />
-      <rect x="2" y="6" width="14" height="12" rx="2" ry="2" />
-    </svg>
-  );
-
-  const CameraOffIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon">
-      <line x1="2" x2="22" y1="2" y2="22" />
-      <path d="m22 8-6 4 6 4V8Z" />
-      <rect x="2" y="6" width="14" height="12" rx="2" ry="2" style={{ clipPath: "polygon(0 0, 100% 0, 100% 35%, 0 35%)" }} />
-      <path d="M2 10v6a2 2 0 0 0 2 2h8" />
-    </svg>
-  );
-
-  const PhoneOffIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon">
-      <path d="m3 21 1.9-1.9a16 16 0 0 0 18-18L21 3" />
-      <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67 19.42 19.42 0 0 1-2.67-3.33 19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.18 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
-      <line x1="2" x2="22" y1="2" y2="22" />
-    </svg>
-  );
-
   const ShareIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon-small">
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -399,118 +404,38 @@ function MeetingPage() {
       {/* Video Streams Container */}
       <main className="videos-arena">
         {/* Local Stream Panel */}
-        <div className="video-card">
-          <div className="card-label">You ({username})</div>
-
-          <video
-            ref={localVideo}
-            autoPlay
-            muted
-            playsInline
-            className={`video-feed ${(!deviceInfo.hasCamera || !cameraEnabled) ? "hidden" : ""}`}
-          />
-
-          {(!deviceInfo.hasCamera || !cameraEnabled) && (
-            <div className="video-placeholder">
-              <div className="avatar-orb">
-                <span>{username.substring(0, 2).toUpperCase()}</span>
-              </div>
-              <div className="placeholder-label">
-                {!deviceInfo.hasCamera ? "Camera not found" : "Camera turned off"}
-              </div>
-            </div>
-          )}
-
-          {/* Mini mic state tag */}
-          <div className="media-state-tag">
-            {!micEnabled || !deviceInfo.hasMic ? (
-              <span className="mic-muted-badge">
-                <MicOffIcon />
-              </span>
-            ) : (
-              <span className="mic-active-badge">
-                <MicIcon />
-              </span>
-            )}
-          </div>
-        </div>
+        <VideoPlayer
+          videoRef={localVideo}
+          username={username}
+          isLocal={true}
+          hasCamera={deviceInfo.hasCamera}
+          cameraEnabled={cameraEnabled}
+          micEnabled={micEnabled}
+          hasMic={deviceInfo.hasMic}
+        />
 
         {/* Remote Stream Panel */}
-        <div className="video-card">
-          <div className="card-label">{remoteUsername}</div>
-
-          <video
-            ref={remoteVideo}
-            autoPlay
-            playsInline
-            className={`video-feed ${connectionState !== "connected" ? "hidden" : ""}`}
-          />
-
-          {connectionState !== "connected" && (
-            <div className="video-placeholder remote-waiting">
-              <div className="pulse-rings">
-                <div className="ring ring1"></div>
-                <div className="ring ring2"></div>
-                <div className="ring ring3"></div>
-              </div>
-              <div className="avatar-orb loading">
-                <span>{remoteUsername.substring(0, 2).toUpperCase()}</span>
-              </div>
-              <div className="placeholder-label animate-pulse">
-                {connectionState === "connecting"
-                  ? "Establishing peer connection..."
-                  : `Waiting for ${remoteUsername} to connect...`}
-              </div>
-            </div>
-          )}
-        </div>
+        <VideoPlayer
+          videoRef={remoteVideo}
+          username={remoteUsername}
+          isLocal={false}
+          connectionState={connectionState}
+        />
       </main>
 
       {/* Conference Controls Deck */}
-      <footer className="controls-deck">
-        <div className="controls-group">
-          {/* Microphone Toggle */}
-          <button
-            onClick={toggleMic}
-            className={`control-btn ${!micEnabled || !deviceInfo.hasMic ? "muted" : "active"}`}
-            disabled={!deviceInfo.hasMic}
-            title={!deviceInfo.hasMic ? "No microphone detected" : micEnabled ? "Mute Microphone" : "Unmute Microphone"}
-          >
-            {!micEnabled || !deviceInfo.hasMic ? <MicOffIcon /> : <MicIcon />}
-          </button>
-
-
-          {/* Connection Trigger / Status indicator */}
-          {connectionState === "connected" ? (
-            <div className="connection-active-indicator">
-              <span className="dot animate-glowing"></span>
-              <span>Connected</span>
-            </div>
-          ) : (
-            <button onClick={startCall} className={`control-btn call-trigger ${connectionState === "connecting" ? "connecting" : "ready"}`} title="Start Connection">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-              </svg>
-              <span className="btn-text">{connectionState === "connecting" ? "Connecting..." : "Connect"}</span>
-            </button>
-          )}
-
-          {/* Camera Toggle */}
-          <button
-            onClick={toggleCamera}
-            className={`control-btn ${!cameraEnabled || !deviceInfo.hasCamera ? "muted" : "active"}`}
-            disabled={!deviceInfo.hasCamera}
-            title={!deviceInfo.hasCamera ? "No camera detected" : cameraEnabled ? "Turn Off Camera" : "Turn On Camera"}
-          >
-            {!cameraEnabled || !deviceInfo.hasCamera ? <CameraOffIcon /> : <CameraIcon />}
-          </button>
-
-          {/* End Call / Leave Room */}
-          <button onClick={endCall} className="control-btn end-call" title="Leave Meeting">
-            <PhoneOffIcon />
-          </button>
-        </div>
-      </footer>
+      <Controls
+        micEnabled={micEnabled}
+        cameraEnabled={cameraEnabled}
+        deviceInfo={deviceInfo}
+        connectionState={connectionState}
+        isBluetoothConnected={isBluetoothConnected}
+        toggleMic={toggleMic}
+        toggleCamera={toggleCamera}
+        startCall={startCall}
+        handleSwitchCamera={handleSwitchCamera}
+        endCall={endCall}
+      />
     </div>
   );
 }
